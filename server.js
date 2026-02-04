@@ -39,34 +39,44 @@ app.post('/api/whisper', upload.single('file'), async (req, res) => {
       size: req.file.size
     });
 
-    // Create form data
+    // Create form data with proper boundary
     const formData = new FormData();
+    
+    // Important: use Blob-like object for proper form encoding
     formData.append('file', req.file.buffer, {
-      filename: req.file.originalname || 'audio.webm',
-      contentType: req.file.mimetype || 'audio/webm',
+      filename: 'audio.webm',
+      contentType: 'audio/webm',
+      knownLength: req.file.size
     });
     formData.append('model', 'whisper-1');
     formData.append('language', 'fr');
     formData.append('response_format', 'text');
 
     console.log('🔄 Calling OpenAI Whisper API...');
+    console.log('Headers:', formData.getHeaders());
 
-    // Call OpenAI
+    // Call OpenAI with exact form-data format
     const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
-        ...formData.getHeaders(),
+        ...formData.getHeaders()
       },
-      body: formData,
+      body: formData.getBuffer()
     });
 
     console.log('📡 Whisper response status:', response.status);
 
     if (!response.ok) {
-      const error = await response.json();
-      console.error('❌ Whisper error:', error);
-      return res.status(response.status).json(error);
+      const errorText = await response.text();
+      console.error('❌ Whisper error:', errorText);
+      let errorJson;
+      try {
+        errorJson = JSON.parse(errorText);
+      } catch {
+        errorJson = { error: errorText };
+      }
+      return res.status(response.status).json(errorJson);
     }
 
     const transcription = await response.text();
@@ -75,7 +85,7 @@ app.post('/api/whisper', upload.single('file'), async (req, res) => {
 
   } catch (error) {
     console.error('💥 Whisper Error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: error.message, stack: error.stack });
   }
 });
 
