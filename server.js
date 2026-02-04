@@ -23,12 +23,21 @@ app.post('/api/whisper', upload.single('file'), async (req, res) => {
     const apiKey = req.headers['x-api-key'];
     
     if (!apiKey) {
+      console.log('❌ API key missing');
       return res.status(401).json({ error: 'API key missing' });
     }
 
     if (!req.file) {
+      console.log('❌ No audio file provided');
       return res.status(400).json({ error: 'No audio file provided' });
     }
+
+    console.log('✅ Audio file received:', {
+      fieldname: req.file.fieldname,
+      originalname: req.file.originalname,
+      mimetype: req.file.mimetype,
+      size: req.file.size
+    });
 
     // Create form data
     const formData = new FormData();
@@ -40,6 +49,8 @@ app.post('/api/whisper', upload.single('file'), async (req, res) => {
     formData.append('language', 'fr');
     formData.append('response_format', 'text');
 
+    console.log('🔄 Calling OpenAI Whisper API...');
+
     // Call OpenAI
     const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
       method: 'POST',
@@ -50,16 +61,20 @@ app.post('/api/whisper', upload.single('file'), async (req, res) => {
       body: formData,
     });
 
+    console.log('📡 Whisper response status:', response.status);
+
     if (!response.ok) {
       const error = await response.json();
+      console.error('❌ Whisper error:', error);
       return res.status(response.status).json(error);
     }
 
     const transcription = await response.text();
+    console.log('✅ Transcription successful! Length:', transcription.length);
     res.send(transcription);
 
   } catch (error) {
-    console.error('Whisper Error:', error);
+    console.error('💥 Whisper Error:', error);
     res.status(500).json({ error: error.message });
   }
 });
