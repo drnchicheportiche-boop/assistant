@@ -1,0 +1,924 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Assistant Dentaire IA V2 - Dr Chicheportiche</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+    <div id="root"></div>
+    
+    <script type="text/babel">
+        const { useState, useRef, useEffect } = React;
+
+        // ============================================
+        // CONFIGURATION CABINET
+        // ============================================
+        const CABINET_INFO = {
+            praticien: "Dr Natane CHICHEPORTICHE",
+            cabinet: "Cabinet Dentaire du Val de Marne à Noiseau",
+            adresse: "3, rue Albert Einstein",
+            codePostal: "94880",
+            ville: "Noiseau",
+            telephone: "01.87.53.56.90",
+            email: "cabdentaire94@gmail.com"
+        };
+
+        const DOCUMENT_TYPES = [
+            { id: 'consultation', name: 'Compte-rendu consultation', icon: '📋', color: 'blue' },
+            { id: 'operatoire', name: 'Compte-rendu opératoire', icon: '🔬', color: 'purple' },
+            { id: 'courrier', name: 'Courrier confrère', icon: '✉️', color: 'green' },
+            { id: 'ordonnance', name: 'Ordonnance', icon: '💊', color: 'red' },
+            { id: 'certificat', name: 'Certificat médical initial', icon: '📄', color: 'orange' },
+            { id: 'cbct', name: 'CR Cone Beam', icon: '📷', color: 'indigo' },
+            { id: 'labo', name: 'Fiche laboratoire', icon: '🦷', color: 'pink' },
+            { id: 'presence', name: 'Certificat de présence', icon: '✓', color: 'teal' },
+            { id: 'contre-indication', name: 'Certificat contre-indication', icon: '⚠️', color: 'yellow' }
+        ];
+
+        // ============================================
+        // PROMPTS OPTIMISÉS CLAUDE
+        // ============================================
+        const CLAUDE_PROMPTS = {
+            consultation: (transcription, patient) => `Tu es un assistant médical expert en documentation dentaire. Génère un compte-rendu de consultation professionnel et structuré.
+
+**TRANSCRIPTION DE LA CONSULTATION :**
+${transcription}
+
+**PATIENT :**
+${patient.nom} ${patient.prenom}
+Date de naissance : ${patient.dateNaissance || 'Non renseignée'}
+
+**FORMAT REQUIS :**
+Crée un document structuré avec :
+
+1. EN-TÊTE (à placer tout en haut) :
+${CABINET_INFO.praticien}
+${CABINET_INFO.cabinet}
+${CABINET_INFO.adresse}, ${CABINET_INFO.codePostal} ${CABINET_INFO.ville}
+Tél : ${CABINET_INFO.telephone} | Email : ${CABINET_INFO.email}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+COMPTE-RENDU DE CONSULTATION
+
+Date : ${new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}
+Patient : ${patient.nom} ${patient.prenom}
+${patient.dateNaissance ? `Date de naissance : ${patient.dateNaissance}` : ''}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+2. MOTIF DE CONSULTATION
+3. ANAMNÈSE (si pertinent)
+4. EXAMEN CLINIQUE
+5. EXAMENS COMPLÉMENTAIRES (si mentionnés)
+6. DIAGNOSTIC
+7. PLAN DE TRAITEMENT
+8. CONCLUSION
+
+**INSTRUCTIONS :**
+- Sois précis et professionnel
+- Utilise la nomenclature dentaire française (numérotation FDI)
+- Structure bien chaque section
+- Reste fidèle à la transcription
+- Termine avec : "${CABINET_INFO.praticien}, Chirurgien-Dentiste"`,
+
+            operatoire: (transcription, patient) => `Génère un compte-rendu opératoire dentaire complet et professionnel.
+
+**TRANSCRIPTION :**
+${transcription}
+
+**PATIENT :** ${patient.nom} ${patient.prenom}
+
+**FORMAT REQUIS :**
+
+${CABINET_INFO.praticien}
+${CABINET_INFO.cabinet}
+${CABINET_INFO.adresse}, ${CABINET_INFO.codePostal} ${CABINET_INFO.ville}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+COMPTE-RENDU OPÉRATOIRE
+
+Date : ${new Date().toLocaleDateString('fr-FR')}
+Patient : ${patient.nom} ${patient.prenom}
+${patient.dateNaissance ? `Né(e) le : ${patient.dateNaissance}` : ''}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+INTERVENTION RÉALISÉE
+[Nature de l'intervention]
+
+ANESTHÉSIE
+Type : [Local/Loco-régional]
+Produit : [Nom + concentration]
+
+TECHNIQUE CHIRURGICALE DÉTAILLÉE
+[Décrire étape par étape]
+
+OBSERVATIONS PER-OPÉRATOIRES
+[Qualité osseuse, complications éventuelles, etc.]
+
+MATÉRIEL UTILISÉ (si applicable)
+[Implants, matériaux, etc.]
+
+SUITES OPÉRATOIRES IMMÉDIATES
+[État post-op, hémostase, etc.]
+
+RECOMMANDATIONS POST-OPÉRATOIRES
+[Prescriptions, consignes, RDV de contrôle]
+
+${CABINET_INFO.praticien}
+Chirurgien-Dentiste`,
+
+            courrier: (transcription, patient) => `Rédige un courrier médical formel pour adresser un patient à un confrère.
+
+**CONTEXTE :**
+${transcription}
+
+**PATIENT :** ${patient.nom} ${patient.prenom}
+
+**FORMAT :**
+
+${CABINET_INFO.praticien}
+${CABINET_INFO.cabinet}
+${CABINET_INFO.adresse}
+${CABINET_INFO.codePostal} ${CABINET_INFO.ville}
+Tél : ${CABINET_INFO.telephone}
+
+${new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}
+
+À l'attention du Docteur [Nom du correspondant]
+
+Objet : Courrier de référence - ${patient.nom} ${patient.prenom}
+
+Cher(e) Confrère/Consœur,
+
+Je vous adresse [M./Mme/Mlle] ${patient.prenom} ${patient.nom}${patient.dateNaissance ? `, né(e) le ${patient.dateNaissance}` : ''}, pour prise en charge spécialisée.
+
+[CONTEXTE MÉDICAL]
+[ANTÉCÉDENTS PERTINENTS]
+[EXAMENS RÉALISÉS]
+[RAISON DE L'ADRESSAGE]
+
+Je reste à votre entière disposition pour tout complément d'information.
+
+Confraternellement,
+
+${CABINET_INFO.praticien}
+Chirurgien-Dentiste`,
+
+            ordonnance: (transcription, patient) => `Génère une ordonnance médicale dentaire.
+
+**PRESCRIPTIONS DICTÉES :**
+${transcription}
+
+**PATIENT :** ${patient.nom} ${patient.prenom}
+
+**FORMAT STRICT :**
+
+${CABINET_INFO.praticien}
+Chirurgien-Dentiste
+${CABINET_INFO.cabinet}
+${CABINET_INFO.adresse}, ${CABINET_INFO.codePostal} ${CABINET_INFO.ville}
+Tél : ${CABINET_INFO.telephone}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+ORDONNANCE
+
+${new Date().toLocaleDateString('fr-FR')}
+
+Patient : ${patient.nom} ${patient.prenom}
+${patient.dateNaissance ? `Date de naissance : ${patient.dateNaissance}` : ''}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[Pour chaque médicament, format :]
+▸ NOM DU MÉDICAMENT [dosage]
+  Posologie : [précise]
+  Durée : [X jours]
+  [Instructions particulières si nécessaire]
+
+[Répéter pour chaque prescription]
+
+Date : ${new Date().toLocaleDateString('fr-FR')}
+
+${CABINET_INFO.praticien}
+Signature`,
+
+            certificat: (transcription, patient) => `Rédige un certificat médical initial (suite traumatisme dentaire).
+
+**CONSTATATIONS :**
+${transcription}
+
+**PATIENT :** ${patient.nom} ${patient.prenom}
+
+**FORMAT :**
+
+${CABINET_INFO.praticien}
+Chirurgien-Dentiste
+${CABINET_INFO.cabinet}
+${CABINET_INFO.adresse}, ${CABINET_INFO.codePostal} ${CABINET_INFO.ville}
+Tél : ${CABINET_INFO.telephone}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+CERTIFICAT MÉDICAL INITIAL
+
+${new Date().toLocaleDateString('fr-FR')}
+
+Je soussigné(e) ${CABINET_INFO.praticien}, Chirurgien-Dentiste, certifie avoir examiné ce jour :
+
+${patient.prenom} ${patient.nom}
+${patient.dateNaissance ? `Né(e) le ${patient.dateNaissance}` : ''}
+
+CIRCONSTANCES DE L'INCIDENT
+[Date, heure, lieu si mentionnés]
+
+CONSTATATIONS CLINIQUES
+[Décrire précisément les lésions observées]
+
+EXAMENS COMPLÉMENTAIRES
+[Radiographies réalisées et leurs conclusions]
+
+DIAGNOSTIC
+[Diagnostic précis des lésions]
+
+PRONOSTIC ET SUITES
+[ITT si applicable, suivi nécessaire]
+
+Ce certificat est établi à la demande de l'intéressé(e) et remis en main propre pour faire valoir ce que de droit.
+
+Fait à ${CABINET_INFO.ville}, le ${new Date().toLocaleDateString('fr-FR')}
+
+${CABINET_INFO.praticien}
+Signature`
+        };
+
+        // ============================================
+        // COMPOSANT PRINCIPAL
+        // ============================================
+        function AssistantDentaire() {
+            const [mode, setMode] = useState('dictaphone');
+            const [isRecording, setIsRecording] = useState(false);
+            const [isPaused, setIsPaused] = useState(false);
+            const [transcription, setTranscription] = useState('');
+            const [selectedDocType, setSelectedDocType] = useState('consultation');
+            const [generatedDoc, setGeneratedDoc] = useState(null);
+            const [isGenerating, setIsGenerating] = useState(false);
+            const [isTranscribing, setIsTranscribing] = useState(false);
+            const [recordingTime, setRecordingTime] = useState(0);
+            const [showSettings, setShowSettings] = useState(false);
+            const [consultations, setConsultations] = useState([]);
+            const [patientInfo, setPatientInfo] = useState({ nom: '', prenom: '', dateNaissance: '' });
+            
+            // API Keys
+            const [apiKeys, setApiKeys] = useState({
+                openai: localStorage.getItem('openai_key') || '',
+                anthropic: localStorage.getItem('anthropic_key') || ''
+            });
+
+            const [showApiHelp, setShowApiHelp] = useState(false);
+            
+            const timerRef = useRef(null);
+            const mediaRecorderRef = useRef(null);
+            const audioChunksRef = useRef([]);
+
+            // Timer
+            useEffect(() => {
+                if (isRecording && !isPaused) {
+                    timerRef.current = setInterval(() => {
+                        setRecordingTime(prev => prev + 1);
+                    }, 1000);
+                } else {
+                    if (timerRef.current) clearInterval(timerRef.current);
+                }
+                return () => {
+                    if (timerRef.current) clearInterval(timerRef.current);
+                };
+            }, [isRecording, isPaused]);
+
+            const formatTime = (seconds) => {
+                const mins = Math.floor(seconds / 60);
+                const secs = seconds % 60;
+                return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+            };
+
+            const saveApiKeys = (keys) => {
+                localStorage.setItem('openai_key', keys.openai);
+                localStorage.setItem('anthropic_key', keys.anthropic);
+                setApiKeys(keys);
+            };
+
+            // ============================================
+            // ENREGISTREMENT AUDIO
+            // ============================================
+            const startRecording = async () => {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ 
+                        audio: {
+                            echoCancellation: true,
+                            noiseSuppression: true,
+                            sampleRate: 44100
+                        } 
+                    });
+                    
+                    audioChunksRef.current = [];
+                    mediaRecorderRef.current = new MediaRecorder(stream);
+                    
+                    mediaRecorderRef.current.ondataavailable = (event) => {
+                        if (event.data.size > 0) {
+                            audioChunksRef.current.push(event.data);
+                        }
+                    };
+
+                    mediaRecorderRef.current.start();
+                    setIsRecording(true);
+                    setRecordingTime(0);
+                    setTranscription('');
+                    setGeneratedDoc(null);
+                } catch (err) {
+                    alert("❌ Erreur d'accès au microphone. Vérifiez les permissions.");
+                    console.error(err);
+                }
+            };
+
+            const stopRecording = async () => {
+                if (!mediaRecorderRef.current || !isRecording) return;
+
+                return new Promise((resolve) => {
+                    mediaRecorderRef.current.onstop = async () => {
+                        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+                        mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+                        setIsRecording(false);
+                        setIsPaused(false);
+                        
+                        // Lancer transcription automatiquement
+                        await transcribeAudio(audioBlob);
+                        resolve();
+                    };
+
+                    mediaRecorderRef.current.stop();
+                });
+            };
+
+            const togglePause = () => {
+                if (!mediaRecorderRef.current) return;
+                
+                if (isPaused) {
+                    mediaRecorderRef.current.resume();
+                } else {
+                    mediaRecorderRef.current.pause();
+                }
+                setIsPaused(!isPaused);
+            };
+
+            // ============================================
+            // TRANSCRIPTION WHISPER
+            // ============================================
+            const transcribeAudio = async (audioBlob) => {
+                if (!apiKeys.openai) {
+                    alert('⚠️ Clé API OpenAI manquante. Configure-la dans les paramètres.');
+                    return;
+                }
+
+                setIsTranscribing(true);
+
+                try {
+                    // Convertir en format compatible
+                    const formData = new FormData();
+                    formData.append('file', audioBlob, 'audio.webm');
+                    formData.append('model', 'whisper-1');
+                    formData.append('language', 'fr');
+                    formData.append('response_format', 'text');
+
+                    const response = await fetch('/api/whisper', {
+                        method: 'POST',
+                        headers: {
+                            'x-api-key': apiKeys.openai
+                        },
+                        body: formData
+                    });
+
+                    if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(error.error?.message || 'Erreur Whisper');
+                    }
+
+                    const transcriptionText = await response.text();
+                    setTranscription(transcriptionText);
+
+                } catch (error) {
+                    console.error('Erreur transcription:', error);
+                    alert(`❌ Erreur transcription : ${error.message}`);
+                } finally {
+                    setIsTranscribing(false);
+                }
+            };
+
+            // ============================================
+            // GÉNÉRATION DOCUMENT CLAUDE
+            // ============================================
+            const generateDocument = async () => {
+                if (!transcription.trim()) {
+                    alert("⚠️ Aucune transcription disponible.");
+                    return;
+                }
+
+                if (!apiKeys.anthropic) {
+                    alert('⚠️ Clé API Claude manquante. Configure-la dans les paramètres.');
+                    return;
+                }
+
+                setIsGenerating(true);
+
+                try {
+                    const promptFunction = CLAUDE_PROMPTS[selectedDocType] || CLAUDE_PROMPTS.consultation;
+                    const prompt = promptFunction(transcription, patientInfo);
+
+                    const response = await fetch('/api/claude', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'x-api-key': apiKeys.anthropic
+                        },
+                        body: JSON.stringify({
+                            model: 'claude-sonnet-4-20250514',
+                            max_tokens: 4000,
+                            temperature: 0.3,
+                            messages: [{
+                                role: 'user',
+                                content: prompt
+                            }]
+                        })
+                    });
+
+                    if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(error.error?.message || 'Erreur Claude API');
+                    }
+
+                    const data = await response.json();
+                    const docContent = data.content[0].text;
+
+                    setGeneratedDoc({
+                        type: selectedDocType,
+                        content: docContent,
+                        date: new Date().toISOString(),
+                        patient: patientInfo
+                    });
+
+                    saveConsultation(docContent);
+
+                } catch (error) {
+                    console.error('Erreur génération:', error);
+                    alert(`❌ Erreur génération : ${error.message}`);
+                } finally {
+                    setIsGenerating(false);
+                }
+            };
+
+            const saveConsultation = (content) => {
+                const newConsultation = {
+                    id: Date.now(),
+                    type: selectedDocType,
+                    patient: patientInfo,
+                    content: content,
+                    transcription: transcription,
+                    date: new Date().toISOString()
+                };
+                setConsultations(prev => [newConsultation, ...prev]);
+                
+                // Sauvegarder dans localStorage
+                const saved = JSON.parse(localStorage.getItem('consultations') || '[]');
+                localStorage.setItem('consultations', JSON.stringify([newConsultation, ...saved].slice(0, 50)));
+            };
+
+            // Charger l'historique au démarrage
+            useEffect(() => {
+                const saved = localStorage.getItem('consultations');
+                if (saved) {
+                    setConsultations(JSON.parse(saved));
+                }
+            }, []);
+
+            const downloadDoc = () => {
+                if (!generatedDoc) return;
+                
+                const blob = new Blob([generatedDoc.content], { type: 'text/plain;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                const filename = `${selectedDocType}_${patientInfo.nom || 'document'}_${new Date().toISOString().split('T')[0]}.txt`;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            };
+
+            const resetAll = () => {
+                setTranscription('');
+                setGeneratedDoc(null);
+                setRecordingTime(0);
+            };
+
+            const hasApiKeys = apiKeys.openai && apiKeys.anthropic;
+
+            return (
+                <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
+                    {/* Header */}
+                    <header className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-50">
+                        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center space-x-4">
+                                    <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center text-white font-bold text-xl shadow-lg">
+                                        DC
+                                    </div>
+                                    <div>
+                                        <h1 className="text-2xl font-bold text-gray-900">Assistant Dentaire IA <span className="text-sm bg-green-500 text-white px-2 py-1 rounded-full ml-2">V2</span></h1>
+                                        <p className="text-sm text-gray-600">{CABINET_INFO.cabinet}</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    {!hasApiKeys && (
+                                        <div className="flex items-center gap-2 bg-yellow-50 border border-yellow-300 text-yellow-800 px-4 py-2 rounded-lg text-sm">
+                                            ⚠️ Configuration requise
+                                        </div>
+                                    )}
+                                    <button
+                                        onClick={() => setShowSettings(!showSettings)}
+                                        className={`p-2 rounded-lg transition-colors ${showSettings ? 'bg-blue-100' : 'hover:bg-gray-100'}`}
+                                    >
+                                        ⚙️
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </header>
+
+                    {/* Settings Panel */}
+                    {showSettings && (
+                        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+                            <div className="bg-white rounded-xl shadow-lg p-6 border-2 border-blue-200">
+                                <div className="flex items-center justify-between mb-6">
+                                    <h3 className="text-xl font-bold">🔑 Configuration API</h3>
+                                    <button
+                                        onClick={() => setShowApiHelp(!showApiHelp)}
+                                        className="text-sm text-blue-600 hover:text-blue-800 underline"
+                                    >
+                                        {showApiHelp ? '▼ Masquer l\'aide' : '▶ Besoin d\'aide ?'}
+                                    </button>
+                                </div>
+
+                                {showApiHelp && (
+                                    <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3 text-sm">
+                                        <div>
+                                            <strong className="text-blue-900">🎤 OpenAI API (Whisper - Transcription)</strong>
+                                            <p className="text-blue-800 mt-1">1. Va sur <a href="https://platform.openai.com/api-keys" target="_blank" className="underline font-semibold">platform.openai.com/api-keys</a></p>
+                                            <p className="text-blue-800">2. Crée un compte (gratuit)</p>
+                                            <p className="text-blue-800">3. Clique sur "Create new secret key"</p>
+                                            <p className="text-blue-800">4. Copie la clé (commence par "sk-...")</p>
+                                            <p className="text-blue-700 mt-2 font-semibold">💰 Coût : ~0,006€/minute (~3€/mois pour 100 consultations)</p>
+                                        </div>
+                                        <div className="border-t border-blue-300 pt-3">
+                                            <strong className="text-blue-900">🤖 Anthropic API (Claude - Génération documents)</strong>
+                                            <p className="text-blue-800 mt-1">1. Va sur <a href="https://console.anthropic.com" target="_blank" className="underline font-semibold">console.anthropic.com</a></p>
+                                            <p className="text-blue-800">2. Crée un compte</p>
+                                            <p className="text-blue-800">3. Va dans "API Keys"</p>
+                                            <p className="text-blue-800">4. Clique sur "Create Key"</p>
+                                            <p className="text-blue-800">5. Copie la clé (commence par "sk-ant-...")</p>
+                                            <p className="text-blue-700 mt-2 font-semibold">💰 Coût : ~0,003€/document (~0,30€/mois pour 100 documents)</p>
+                                        </div>
+                                        <div className="border-t border-blue-300 pt-3 bg-green-50 -m-4 p-4 rounded-b-lg">
+                                            <p className="text-green-900 font-bold">✅ Total estimé : 5-10€/mois vs 99€/mois Askara</p>
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                            🎤 Clé API OpenAI (Whisper) *
+                                        </label>
+                                        <input
+                                            type="password"
+                                            value={apiKeys.openai}
+                                            onChange={(e) => saveApiKeys({...apiKeys, openai: e.target.value})}
+                                            placeholder="sk-..."
+                                            className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                                        />
+                                        {apiKeys.openai && (
+                                            <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
+                                                ✅ Clé configurée ({apiKeys.openai.substring(0, 10)}...)
+                                            </p>
+                                        )}
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                            🤖 Clé API Anthropic (Claude) *
+                                        </label>
+                                        <input
+                                            type="password"
+                                            value={apiKeys.anthropic}
+                                            onChange={(e) => saveApiKeys({...apiKeys, anthropic: e.target.value})}
+                                            placeholder="sk-ant-..."
+                                            className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                                        />
+                                        {apiKeys.anthropic && (
+                                            <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
+                                                ✅ Clé configurée ({apiKeys.anthropic.substring(0, 12)}...)
+                                            </p>
+                                        )}
+                                    </div>
+
+                                    {hasApiKeys && (
+                                        <div className="bg-green-50 border-2 border-green-300 rounded-lg p-4 flex items-center gap-3">
+                                            <span className="text-3xl">✅</span>
+                                            <div>
+                                                <p className="font-bold text-green-900">Configuration complète !</p>
+                                                <p className="text-sm text-green-700">L'assistant est prêt à l'emploi avec Whisper + Claude</p>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                        {/* Mode Selector */}
+                        <div className="flex gap-4 mb-8">
+                            <button
+                                onClick={() => setMode('dictaphone')}
+                                className={`flex-1 py-4 px-6 rounded-xl font-semibold transition-all ${
+                                    mode === 'dictaphone'
+                                        ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg scale-105'
+                                        : 'bg-white text-gray-700 hover:bg-gray-50 shadow'
+                                }`}
+                            >
+                                🎤 Dictaphone IA
+                            </button>
+                            <button
+                                onClick={() => setMode('active-consult')}
+                                className={`flex-1 py-4 px-6 rounded-xl font-semibold transition-all relative ${
+                                    mode === 'active-consult'
+                                        ? 'bg-gradient-to-r from-purple-500 to-purple-600 text-white shadow-lg scale-105'
+                                        : 'bg-white text-gray-700 hover:bg-gray-50 shadow'
+                                }`}
+                            >
+                                ⚡ Active Consult
+                                <span className="absolute -top-2 -right-2 bg-green-500 text-white text-xs px-2 py-1 rounded-full animate-pulse">
+                                    Popular
+                                </span>
+                            </button>
+                        </div>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                            {/* Left Panel */}
+                            <div className="lg:col-span-1 space-y-6">
+                                {/* Patient Info */}
+                                <div className="bg-white rounded-xl shadow-lg p-6">
+                                    <h3 className="text-lg font-semibold mb-4 flex items-center">
+                                        <span className="mr-2">👤</span>
+                                        Informations Patient
+                                    </h3>
+                                    <div className="space-y-3">
+                                        <input
+                                            type="text"
+                                            placeholder="Nom"
+                                            value={patientInfo.nom}
+                                            onChange={(e) => setPatientInfo({...patientInfo, nom: e.target.value})}
+                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                                        />
+                                        <input
+                                            type="text"
+                                            placeholder="Prénom"
+                                            value={patientInfo.prenom}
+                                            onChange={(e) => setPatientInfo({...patientInfo, prenom: e.target.value})}
+                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                                        />
+                                        <input
+                                            type="date"
+                                            value={patientInfo.dateNaissance}
+                                            onChange={(e) => setPatientInfo({...patientInfo, dateNaissance: e.target.value})}
+                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Document Type */}
+                                <div className="bg-white rounded-xl shadow-lg p-6">
+                                    <h3 className="text-lg font-semibold mb-4">Type de document</h3>
+                                    <div className="space-y-2">
+                                        {DOCUMENT_TYPES.map((doc) => (
+                                            <button
+                                                key={doc.id}
+                                                onClick={() => setSelectedDocType(doc.id)}
+                                                className={`w-full text-left px-4 py-3 rounded-lg transition-all ${
+                                                    selectedDocType === doc.id
+                                                        ? 'bg-blue-50 border-2 border-blue-500 text-blue-700 font-semibold'
+                                                        : 'bg-gray-50 border border-gray-200 hover:bg-gray-100'
+                                                }`}
+                                            >
+                                                <span className="mr-2">{doc.icon}</span>
+                                                {doc.name}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Center Panel */}
+                            <div className="lg:col-span-2 space-y-6">
+                                {/* Recording Controls */}
+                                <div className="bg-white rounded-xl shadow-lg p-8">
+                                    <div className="text-center mb-6">
+                                        <div className="inline-flex items-center justify-center w-32 h-32 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 mb-4 relative">
+                                            {isRecording && (
+                                                <div className="absolute inset-0 rounded-full bg-blue-500 animate-ping opacity-75"></div>
+                                            )}
+                                            <span className="text-6xl relative z-10">🎤</span>
+                                        </div>
+                                        <div className="text-3xl font-bold text-gray-900 mb-2">
+                                            {formatTime(recordingTime)}
+                                        </div>
+                                        <div className="text-sm text-gray-600">
+                                            {isTranscribing && '🔄 Transcription en cours...'}
+                                            {!isTranscribing && (isRecording ? (isPaused ? '⏸️ En pause' : '🔴 Enregistrement en cours') : '⚪ Prêt à enregistrer')}
+                                        </div>
+                                    </div>
+
+                                    <div className="flex justify-center gap-4">
+                                        {!isRecording ? (
+                                            <button
+                                                onClick={startRecording}
+                                                disabled={!hasApiKeys}
+                                                className="px-8 py-4 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl font-semibold hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                                                title={!hasApiKeys ? 'Configure les clés API d\'abord' : ''}
+                                            >
+                                                🎤 Démarrer l'enregistrement
+                                            </button>
+                                        ) : (
+                                            <>
+                                                <button
+                                                    onClick={togglePause}
+                                                    className="px-6 py-3 bg-yellow-500 text-white rounded-xl font-semibold hover:bg-yellow-600 transition-all"
+                                                >
+                                                    {isPaused ? '▶️ Reprendre' : '⏸️ Pause'}
+                                                </button>
+                                                <button
+                                                    onClick={stopRecording}
+                                                    className="px-6 py-3 bg-red-500 text-white rounded-xl font-semibold hover:bg-red-600 transition-all"
+                                                >
+                                                    ⏹️ Arrêter
+                                                </button>
+                                            </>
+                                        )}
+                                    </div>
+
+                                    {!hasApiKeys && (
+                                        <div className="mt-4 bg-yellow-50 border-2 border-yellow-300 rounded-lg p-4 text-center">
+                                            <p className="text-yellow-800 font-semibold">⚠️ Configure tes clés API dans les paramètres pour utiliser l'assistant</p>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Transcription */}
+                                {(transcription || isTranscribing) && (
+                                    <div className="bg-white rounded-xl shadow-lg p-6">
+                                        <div className="flex items-center justify-between mb-4">
+                                            <h3 className="text-lg font-semibold">
+                                                {isTranscribing ? '🔄 Transcription en cours...' : '✅ Transcription'}
+                                            </h3>
+                                            {transcription && (
+                                                <span className="text-sm text-gray-500">{transcription.length} caractères</span>
+                                            )}
+                                        </div>
+                                        {isTranscribing ? (
+                                            <div className="flex items-center justify-center py-12">
+                                                <div className="text-center">
+                                                    <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                                                    <p className="text-gray-600">Whisper analyse ton audio...</p>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <>
+                                                <textarea
+                                                    value={transcription}
+                                                    onChange={(e) => setTranscription(e.target.value)}
+                                                    className="w-full h-40 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none font-mono text-sm"
+                                                    placeholder="La transcription apparaîtra ici..."
+                                                />
+                                                <div className="mt-4 flex gap-3">
+                                                    <button
+                                                        onClick={generateDocument}
+                                                        disabled={isGenerating}
+                                                        className="flex-1 px-6 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg font-semibold hover:shadow-lg transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                                                    >
+                                                        {isGenerating ? (
+                                                            <>
+                                                                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                                                Claude génère...
+                                                            </>
+                                                        ) : (
+                                                            <>📄 Générer le document</>
+                                                        )}
+                                                    </button>
+                                                    <button
+                                                        onClick={resetAll}
+                                                        className="px-6 py-3 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300 transition-all"
+                                                    >
+                                                        🗑️ Reset
+                                                    </button>
+                                                </div>
+                                            </>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* Generated Document */}
+                                {generatedDoc && (
+                                    <div className="bg-white rounded-xl shadow-lg p-6 border-2 border-green-200">
+                                        <div className="flex items-center justify-between mb-4">
+                                            <h3 className="text-lg font-semibold flex items-center gap-2">
+                                                <span className="text-2xl">✅</span>
+                                                Document généré par Claude
+                                            </h3>
+                                            <div className="flex gap-2">
+                                                <button
+                                                    onClick={downloadDoc}
+                                                    className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-all flex items-center gap-2"
+                                                >
+                                                    ⬇️ Télécharger
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div className="bg-gray-50 rounded-lg p-6 border border-gray-200 max-h-96 overflow-y-auto">
+                                            <pre className="whitespace-pre-wrap font-sans text-sm text-gray-800 leading-relaxed">
+                                                {generatedDoc.content}
+                                            </pre>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* History */}
+                        {consultations.length > 0 && (
+                            <div className="mt-8 bg-white rounded-xl shadow-lg p-6">
+                                <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                                    📚 Historique des consultations ({consultations.length})
+                                </h3>
+                                <div className="space-y-3">
+                                    {consultations.slice(0, 10).map((consult) => (
+                                        <div key={consult.id} className="p-4 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 transition-all cursor-pointer">
+                                            <div className="flex items-center justify-between">
+                                                <div>
+                                                    <span className="font-semibold">{consult.patient.nom} {consult.patient.prenom}</span>
+                                                    <span className="mx-2 text-gray-400">•</span>
+                                                    <span className="text-sm text-gray-600">
+                                                        {DOCUMENT_TYPES.find(d => d.id === consult.type)?.name}
+                                                    </span>
+                                                </div>
+                                                <span className="text-sm text-gray-500">
+                                                    {new Date(consult.date).toLocaleDateString('fr-FR')}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </main>
+
+                    {/* Footer */}
+                    <footer className="bg-white border-t border-gray-200 mt-12">
+                        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+                            <div className="text-center text-sm text-gray-600">
+                                <p className="font-semibold">{CABINET_INFO.praticien} - {CABINET_INFO.cabinet}</p>
+                                <p>{CABINET_INFO.adresse}, {CABINET_INFO.codePostal} {CABINET_INFO.ville}</p>
+                                <p className="mt-1">Tél : {CABINET_INFO.telephone} • Email : {CABINET_INFO.email}</p>
+                                <div className="mt-4 flex items-center justify-center gap-4 text-xs text-gray-500">
+                                    <span>✅ RGPD Conforme</span>
+                                    <span>✅ Données locales</span>
+                                    <span>✅ Whisper + Claude</span>
+                                </div>
+                                <p className="mt-2 text-xs text-gray-400">Assistant Dentaire IA V2 • Powered by OpenAI Whisper + Claude Sonnet 4</p>
+                            </div>
+                        </div>
+                    </footer>
+                </div>
+            );
+        }
+
+        ReactDOM.render(<AssistantDentaire />, document.getElementById('root'));
+    </script>
+</body>
+</html>
